@@ -41,6 +41,7 @@ namespace scan
 	static void dumpcfg(std::vector<PORT_DEVICE_INFO> &devices);
 
 	static void check_faceit(PORT_DEVICE_INFO &port);
+	static void check_irq(PORT_DEVICE_INFO& port);
 	static void check_activity(PORT_DEVICE_INFO &port);
 	static void check_driver(PORT_DEVICE_INFO &port);
 	static void check_hidden(PORT_DEVICE_INFO &port);
@@ -140,6 +141,14 @@ void scan::pci(BOOL disable, BOOL advanced, BOOL dump_cfg)
 	//
 	for (auto &port : port_devices) if (!port.blk) check_activity(port);
 
+	//
+	// 打印中断计数
+	//
+	for (auto& port : port_devices)  check_irq(port);
+
+	printf("\n");
+
+
 	if (advanced)
 	{
 		std::vector<PNP_ADAPTER> pnp_devices = get_pnp_adapters();
@@ -190,6 +199,7 @@ void scan::pci(BOOL disable, BOOL advanced, BOOL dump_cfg)
 					{
 						port.blk = 2;
 						port.blk_info = 23;
+						LOG_RED("爆红原因： block endpoints too, forced command register\n");
 						break;
 					}
 				}
@@ -282,7 +292,8 @@ static void scan::check_driver(PORT_DEVICE_INFO &port)
 			if (dev.cfg.command().bus_master_enable())
 			{
 				port.blk = 2; port.blk_info = 19;
-				return;
+				LOG_RED("爆红原因：device is not found, driverless card with bus master enable\n");
+				//return;
 			}
 		}
 		else
@@ -297,13 +308,21 @@ static void scan::check_driver(PORT_DEVICE_INFO &port)
 	}
 }
 
-BOOL is_interrupt_enabled(config::Pci &cfg)
+
+BOOL is_interrupt_enabled(config::Pci& cfg, bool isOpenLog = FALSE)
 {
+	// 打印 Vendor ID 和 Device ID
+	FontColor(11);
+
 	//
 	// legacy
 	//
 	if (!cfg.command().interrupt_disable())
 	{
+		if (isOpenLog) {
+			printf("[%04X:%04X] 传统中断已启用\n", cfg.vendor_id(), cfg.device_id());  // Legacy interrupt enabled
+		}
+
 		return 1;
 	}
 
@@ -313,6 +332,10 @@ BOOL is_interrupt_enabled(config::Pci &cfg)
 	auto msi = cfg.get_msi();
 	if (msi.cap_on && msi.cap.msi_enabled())
 	{
+		if (isOpenLog) {
+			printf("[%04X:%04X] MSI中断已启用\n", cfg.vendor_id(), cfg.device_id());  // MSI interrupt enabled
+		}
+
 		return 1;
 	}
 
@@ -322,10 +345,48 @@ BOOL is_interrupt_enabled(config::Pci &cfg)
 	auto msix = cfg.get_msix();
 	if (msix.cap_on && msix.cap.msix_enabled())
 	{
+		if (isOpenLog) {
+			printf("[%04X:%04X] MSI-X中断已启用\n", cfg.vendor_id(), cfg.device_id());  // MSI-X interrupt enabled
+		}
+
 		return 1;
 	}
+
 	return 0;
 }
+
+
+static void scan::check_irq(PORT_DEVICE_INFO& port)
+{
+	ISRDPCSTATS isr_stats{};  // 中断统计信息结构
+	for (auto& dev : port.devices)
+	{
+		// 检查设备是否启用了中断
+		if (is_interrupt_enabled(dev.cfg))
+		{
+			// 获取设备的中断统计信息
+			if (get_isr_stats(dev, &isr_stats))
+			{
+				// 打印中断计数
+				printf("[%04X:%04X] 中断计数: %lld\n",
+					dev.cfg.vendor_id(), dev.cfg.device_id(), isr_stats.IsrCount);
+			}
+			else
+			{
+				printf("获取[%04X:%04X] 的中断统计信息失败\n",
+					dev.cfg.vendor_id(), dev.cfg.device_id());
+			}
+		}
+		else
+		{
+			printf("[%04X:%04X] 的中断未启用\n",
+				dev.cfg.vendor_id(), dev.cfg.device_id());
+		}
+	}
+}
+
+
+
 
 static void scan::check_activity(PORT_DEVICE_INFO& port)
 {
@@ -339,7 +400,7 @@ static void scan::check_activity(PORT_DEVICE_INFO& port)
 			continue;
 		}
 
-		int interrupts = is_interrupt_enabled(dev.cfg);
+		int interrupts = is_interrupt_enabled(dev.cfg, TRUE);
 		if (!interrupts)
 		{
 			continue;
@@ -371,7 +432,8 @@ static void scan::check_hidden(PORT_DEVICE_INFO &port)
 	if (!port.self.pci_device_object)
 	{
 		port.blk = 2; port.blk_info = 5;
-		return;
+		LOG_RED("爆红原因：check_hidden 检测到隐藏设备\n");
+		//return;
 	}
 
 	for (auto& dev : port.devices)
@@ -379,6 +441,7 @@ static void scan::check_hidden(PORT_DEVICE_INFO &port)
 		if (!dev.pci_device_object)
 		{
 			port.blk = 2; port.blk_info = 5;
+			LOG_RED("爆红原因：check_hidden 检测到隐藏设备\n");
 			break;
 		}
 	}
@@ -418,7 +481,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					cl::pci::write<WORD>(dev.bus, dev.slot, dev.func, cap, *(WORD*)(dev.cfg.raw + cap));
 					port.blk = 2;
 					port.blk_info = 23;
-					return;
+					LOG_RED("爆红原因：test if everything can be written\n");
+					//return;
 				}
 
 				if (cap_id == 0x01) // PM (R/W & R/O)
@@ -438,7 +502,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					{
 						port.blk = 2;
 						port.blk_info = 23;
-						return;
+						LOG_RED("爆红原因：MSI (R/O)\n");
+						//return;
 					}
 				}
 
@@ -447,18 +512,23 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					auto pci = dev.cfg.get_pci();
 					BYTE offs = pci.base_ptr + 0x04 + 0x04;
 
+					// 根据 dev_ctrl_ur_reporting() 的值决定数据操作
 					WORD data = pci.dev.control.dev_ctrl_ur_reporting() ?
 						pci.dev.control.raw & ~(1 << 3) : pci.dev.control.raw | (1 << 3);
 
+					// 将数据写入 PCI
 					cl::pci::write<WORD>(dev.bus, dev.slot, dev.func, offs, data);
-					if (cl::pci::read<WORD>(dev.bus, dev.slot, dev.func, offs) == pci.dev.control.raw)
-					{
+
+					// 读取 PCI 并进行验证
+					WORD read_data = cl::pci::read<WORD>(dev.bus, dev.slot, dev.func, offs);
+
+					if (read_data == pci.dev.control.raw) {
 						port.blk = 2;
 						port.blk_info = 23;
-						return;
+						LOG_RED("爆红原因：PCI-X (R/W)\n");
+						//return;
 					}
-					else
-					{
+					else {
 						cl::pci::write<WORD>(dev.bus, dev.slot, dev.func, offs, pci.dev.control.raw);
 					}
 
@@ -470,7 +540,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					{
 						port.blk = 2;
 						port.blk_info = 23;
-						return;
+						LOG_RED("爆红原因：unsupported_request_detected rw1c\n");
+						//return;
 					}
 				}
 
@@ -484,7 +555,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 						cl::pci::write<BYTE>(dev.bus, dev.slot, dev.func, msix.base_ptr + 0x02, msix_val);
 						port.blk = 2;
 						port.blk_info = 23;
-						return;
+						LOG_RED("爆红原因：msix (R/O) test\n");
+						//return;
 					}
 				}
 			}
@@ -511,7 +583,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 				cl::pci::write<WORD>(dev.bus, dev.slot, dev.func, cap, *(WORD*)(dev.cfg.raw + cap));
 				port.blk = 2;
 				port.blk_info = 23;
-				return;
+				LOG_RED("爆红原因：test if everything can be written\n");
+				//return;
 			}
 
 			if (cap_id == 0x01) // AER
@@ -526,7 +599,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 				{
 					port.blk = 2;
 					port.blk_info = 23;
-					return;
+					LOG_RED("爆红原因：VC [R/O] test\n");
+					//return;
 				}
 			}
 
@@ -539,7 +613,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					cl::pci::write<DWORD>(dev.bus, dev.slot, dev.func, cap + 0x04, lower_32bits);
 					port.blk = 2;
 					port.blk_info = 23;
-					return;
+					LOG_RED("爆红原因：DSN\n");
+					//return;
 				}
 			}
 
@@ -552,7 +627,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 					cl::pci::write<WORD>(dev.bus, dev.slot, dev.func, cap + 0x04, vsec_id);
 					port.blk = 2;
 					port.blk_info = 23;
-					return;
+					LOG_RED("爆红原因：VSEC [R/O]\n");
+					//return;
 				}
 			}
 
@@ -568,7 +644,8 @@ static void scan::check_gummybear(BOOL advanced, PORT_DEVICE_INFO& port)
 				{
 					port.blk = 2;
 					port.blk_info = 23;
-					return;
+					LOG_RED("爆红原因：Latency Tolerance Reporting (LTR) [R/W]\n");
+					//return;
 				}
 				else
 				{
@@ -596,7 +673,8 @@ static void scan::check_config(PORT_DEVICE_INFO &port)
 			if (pcie.cap.pcie_cap_device_port_type() >= PciExpressRootPort)
 			{
 				port.blk = 2; port.blk_info = 14;
-				return;
+				LOG_RED("爆红原因：end point device never should be bridge/port\n");
+				//return;
 			}
 
 			//
@@ -605,13 +683,15 @@ static void scan::check_config(PORT_DEVICE_INFO &port)
 			if (pcie.link.status.link_status_link_speed() > pcie_port.link.status.link_status_link_speed())
 			{
 				port.blk = 2; port.blk_info = 15;
-				return;
+				LOG_RED("爆红原因：compare data between device data and port: link_status_link_speed\n");
+				//return;
 			}
 
 			if (pcie.link.status.link_status_link_width() > pcie_port.link.status.link_status_link_width())
 			{
 				port.blk = 2; port.blk_info = 15;
-				return;
+				LOG_RED("爆红原因：compare data between device data and port: link_status_link_width\n");
+				//return;
 			}
 		}
 
@@ -621,7 +701,8 @@ static void scan::check_config(PORT_DEVICE_INFO &port)
 		if (dev.cfg.status().capabilities_list() && !dev.cfg.get_pm().cap_on)
 		{
 			port.blk = 2; port.blk_info = 6;
-			return;
+			LOG_RED("爆红原因：device reports to have capabilities, lets see if we got at least power management\n");
+			//return;
 		}
 
 		if (dev.cfg.command().bus_master_enable())
@@ -652,7 +733,8 @@ static void scan::check_config(PORT_DEVICE_INFO &port)
 			if (port.devices.size() < 2)
 			{
 				port.blk = 2; port.blk_info = 9;
-				return;
+				LOG_RED("爆红原因：Header Type: bit 7 (0x80) indicates whether it is a multi-function device\n");
+				//return;
 			}
 		}
 
@@ -680,7 +762,8 @@ static void scan::check_config(PORT_DEVICE_INFO &port)
 			// invalid header type
 			//
 			port.blk = 2; port.blk_info = 12;
-			return;
+			LOG_RED("爆红原因：Header Type 0 Configuration Space header is used for Endpoint Devices: invalid header type\n");
+			//return;
 		}
 	}
 
@@ -802,36 +885,36 @@ static void scan::dumpcfg(std::vector<PORT_DEVICE_INFO> &devices)
 	}
 }
 
-inline const char *blkinfo(unsigned char info)
+inline const char* blkinfo(unsigned char info)
 {
 	switch (info)
 	{
-	case 1:  return "pcileech";
-	case 2:  return "bus master off";
-	case 3:  return "xilinx development card";
-	case 4:  return "invalid port";
-	case 5:  return "hidden device";
-	case 6:  return "invalid cap reporting";
-	case 7:  return "nulled capabilities";
-	case 8:  return "nulled ext capabilities";
-	case 9:  return "invalid multi func device";
-	case 10: return "invalid header type 0";
-	case 11: return "invalid header type 1";
-	case 12: return "invalid header type";
-	case 13: return "invalid config"; // just general msg
-	case 14: return "invalid device type"; // just general msg
-	case 15: return "port/device mismatch";
-	case 16: return "driverless card";
-	case 17: return "invalid network adapter";
-	case 18: return "no network connections";
-	case 19: return "driverless card with bus master";
-	case 20: return "invalid usb controller";
-	case 21: return "no attached USB devices";
-	case 22: return "driver status failed";
-	case 23: return "pcileech";
-	case 24: return "card is not breathing";
+	case 1:  return "检测到DMA:pcileech";  // pcileech
+	case 2:  return "总线主控已关闭";  // bus master off
+	case 3:  return "xilinx 开发板";  // xilinx development card
+	case 4:  return "无效端口";  // invalid port
+	case 5:  return "隐藏设备";  // hidden device
+	case 6:  return "无效的能力报告";  // invalid cap reporting
+	case 7:  return "能力寄存器被清空";  // nulled capabilities
+	case 8:  return "扩展能力寄存器被清空";  // nulled ext capabilities
+	case 9:  return "无效的多功能设备";  // invalid multi func device
+	case 10: return "无效的头部类型 0";  // invalid header type 0
+	case 11: return "无效的头部类型 1";  // invalid header type 1
+	case 12: return "无效的头部类型";  // invalid header type
+	case 13: return "无效配置";  // invalid config
+	case 14: return "无效的设备类型";  // invalid device type
+	case 15: return "端口/设备不匹配";  // port/device mismatch
+	case 16: return "无驱动程序的卡";  // driverless card
+	case 17: return "无效的网络适配器";  // invalid network adapter
+	case 18: return "无网络连接";  // no network connections
+	case 19: return "带总线主控的无驱动程序卡";  // driverless card with bus master
+	case 20: return "无效的 USB 控制器";  // invalid usb controller
+	case 21: return "未连接任何 USB 设备";  // no attached USB devices
+	case 22: return "驱动状态失败";  // driver status failed
+	case 23: return "检测到 DMA卡板：pcileech";  // pcileech
+	case 24: return "中断功能已启动,但未触发过中断:中断计数为0";  // card is not breathing
 	}
-	return "OK";
+	return "正常";
 }
 
 inline PCSTR get_port_type_str(config::Pci cfg)
@@ -856,15 +939,20 @@ inline PCSTR get_port_type_str(config::Pci cfg)
 	return "";
 }
 
-static void scan::PrintPcieInfo(PORT_DEVICE_INFO &port)
+static void scan::PrintPcieInfo(PORT_DEVICE_INFO& port)
 {
-	if (port.blk == 1)
+	if (port.blk == 0)
+	{
+		FontColor(2);
+
+	}
+	else if (port.blk == 1)
 	{
 		FontColor(14);
 	}
 	else if (port.blk == 2)
 	{
-		FontColor(4);
+		FontColor(4);  // 5 紫色
 	}
 
 	//

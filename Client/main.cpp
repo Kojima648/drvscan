@@ -11,14 +11,14 @@ int main(int argc, char **argv)
 
 	if (!cl::initialize())
 	{
-		LOG("driver is not running\n");
-		printf("Press any key to continue . . .");
+		LOG("驱动程序未运行\n");  // driver is not running
+		printf("按任意键继续 . . .");
 		return getchar();
 	}
 
 	if (argc < 2)
 	{
-		LOG("--help\n");
+		LOG("--帮助\n");  // --help
 		return getchar();
 	}
 
@@ -30,27 +30,27 @@ int main(int argc, char **argv)
 			printf(
 				"\n\n"
 
-				"--scan                 scan target process memory changes\n"
-				"    --pid              (optional) target process id\n"
-				"    --usecache         (optional) we use local cache instead of original PE files\n"
-				"    --savecache        (optional) dump target process modules to disk\n\n"
-				"--scanefi              scan abnormals from efi memory map\n"
-				"    --dump             (optional) dump found abnormal to disk\n\n"
-				"--scanpci              scan pci cards from the system\n"
-				"    --advanced         (optional) test pci features\n"
-				"    --block            (optional) block illegal cards\n"
-				"    --cfg              (optional) print out every card cfg space\n"
-				"--scanmouse            catch aimbots by monitoring mouse packets\n"
-				"    --log              (optional) print out every mouse packet\n\n\n"
+				"--scan                 扫描目标进程内存变化\n"
+				"    --pid              (可选) 目标进程ID\n"
+				"    --usecache         (可选) 我们使用本地缓存而不是原始的PE文件\n"
+				"    --savecache        (可选) 将目标进程模块保存到磁盘\n\n"
+				"--scanefi              扫描EFI内存映射中的异常\n"
+				"    --dump             (可选) 将发现的异常保存到磁盘\n\n"
+				"--scanpci              扫描系统中的PCI卡\n"
+				"    --advanced         (可选) 测试PCI功能\n"
+				"    --block            (可选) 阻止非法卡\n"
+				"    --cfg              (可选) 输出每个卡的配置空间\n"
+				"--scanmouse            通过监控鼠标数据包捕获自动瞄准外挂\n"
+				"    --log              (可选) 输出每个鼠标数据包\n\n\n"
 			);
 
-			printf("\nExample (verifying modules integrity by using cache):\n"
-				"1.                     load malware\n"
-				"1.                     drvscan.exe --scan --savecache --pid 4\n"
-				"2.                     reboot the computer\n"
-				"3.                     load windows without malware\n"
-				"4.                     drvscan.exe --scan --usecache --pid 4\n"
-				"all malware patches should be now visible\n\n"
+			printf("\n示例（通过使用缓存验证模块完整性）:\n"
+				"1.                     加载恶意软件\n"
+				"2.                     drvscan.exe --scan --savecache --pid 4\n"
+				"3.                     重启计算机\n"
+				"4.                     加载无恶意软件的Windows\n"
+				"5.                     drvscan.exe --scan --usecache --pid 4\n"
+				"所有恶意软件的补丁现在都应该可见\n\n"
 			);
 		}
 
@@ -119,8 +119,7 @@ int main(int argc, char **argv)
 
 	if (scanpci)
 	{
-		LOG("scanning PCIe devices\n");
-
+		LOG("正在扫描PCIe设备\n\n");  // scanning PCIe devices
 		scan::pci(block, advanced, cfg);
 	}
 
@@ -149,7 +148,7 @@ int main(int argc, char **argv)
 			modules = get_user_modules(pid);
 		}
 
-		LOG("scanning modules\n");
+		LOG("正在扫描模块\n");  // scanning modules
 		for (auto mod : modules)
 		{
 			scan::image(savecache, modules, pid, mod, use_cache);
@@ -158,26 +157,29 @@ int main(int argc, char **argv)
 
 	if (scanefi)
 	{
-		LOG("scanning EFI\n");
+		LOG("正在扫描EFI\n");  // scanning EFI
 		scan::efi(dump);
 	}
 
 	if (scanmouse)
 	{
-		LOG("monitoring mouse\n");
+		LOG("正在监控鼠标\n");  // monitoring mouse
 		scan::mouse(log);
 	}
 
 	auto timer_end = std::chrono::high_resolution_clock::now() - timer_start;
 
 	if (scanefi+scan+scanpci)
-		LOG("scan is complete [%lldms]\n",
+		LOG("扫描完成 [%lldms]\n",  // scan is complete [%lldms]
 			std::chrono::duration_cast<std::chrono::milliseconds>(timer_end).count());
 
 	//
-	// add watermark
+	// 添加水印
 	//
-	PRINT_GREEN("\nbuild date: %s, %s\n", __DATE__, __TIME__);
+	PRINT_GREEN("\n # 结果仅供参考，请自行承担任何风险！");
+	PRINT_BLUE("\n # 此工具免费 原创: ekknod(github)  汉化: 梦遥无归期(哔哩哔哩)");
+	PRINT_BLUE("\n # 构建时间: 2024年10月8日21:32:56 \n");
+
 
 	cl::terminate();
 

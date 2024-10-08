@@ -23,7 +23,7 @@ printf(__VA_ARGS__); \
 FontColor(7); \
 
 #define PRINT_GREEN(...) \
-FontColor(2); \
+FontColor(6); \
 printf(__VA_ARGS__); \
 FontColor(7); \
 

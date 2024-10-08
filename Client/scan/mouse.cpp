@@ -69,10 +69,10 @@ void scan::mouse(BOOL log_mouse)
 	device_list = get_input_devices();
 
 	if (device_list.size() == 1) {
-		LOG("primary input device has been selected\n");
+		LOG("主要输入设备已被选中\n");
 	}
 
-	LOG("Press F10 to stop monitoring . . .\n");
+	LOG("按下 F10 键停止监控 . . .\n");
 
 	QWORD last_rawinput_poll = 0;
 	PBYTE data_rawinput      = 0;
@@ -188,7 +188,7 @@ void scan::handle_raw_input(BOOL log_mouse, QWORD timestamp, RAWINPUT *input)
 			primary_dev.timestamp = timestamp;
 			device_list.clear();
 			device_list.push_back(primary_dev);
-			LOG("primary input device has been selected\n");
+			LOG("主要输入设备已被选中\n");
 			return;
 		}
 	}
