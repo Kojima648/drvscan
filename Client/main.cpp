@@ -178,7 +178,7 @@ int main(int argc, char **argv)
 	//
 	PRINT_GREEN("\n # 结果仅供参考，请自行承担任何风险！");
 	PRINT_BLUE("\n # 此工具免费 原创: ekknod(github)  汉化: 梦遥无归期(哔哩哔哩)");
-	PRINT_BLUE("\n # 构建时间: 2024年10月8日21:32:56 \n");
+	PRINT_BLUE("\n # 构建时间: 2024年10月08日23:18:24 \n");
 
 
 	cl::terminate();
